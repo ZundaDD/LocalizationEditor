@@ -81,6 +81,24 @@ public class Program
                 var result = pathSelect.ChooseOne(window, title: "Choose language file", filters: [("hjson file", ["hjson"])]);
                 if (result.success) window.SendWebMessage("LANG_FILE:" + result.value);
             }
+            else if (message.StartsWith("PICK_LANGUAGE_FILE2:"))
+            {
+                try
+                {
+                    var json = message["PICK_LANGUAGE_FILE2:".Length..];
+                    var req = JsonSerializer.Deserialize<PickLanguageFileRequest>(json);
+                    if (req == null || string.IsNullOrWhiteSpace(req.target)) return;
+
+                    var result = pathSelect.ChooseOne(window, title: "Choose language file", filters: [("hjson file", ["hjson"])]);
+                    if (!result.success) return;
+
+                    window.SendWebMessage("LANG_FILE2:" + JsonSerializer.Serialize(new { target = req.target, path = result.value }));
+                }
+                catch (Exception ex)
+                {
+                    window.ShowMessage("Error occurred", $"PICK_LANGUAGE_FILE2 failed:\n{ex.Message}");
+                }
+            }
             else if (message == "SAVE_PROJECT")
             {
                 var result = proj.SaveProject();
@@ -114,6 +132,28 @@ public class Program
                 catch (Exception ex)
                 {
                     window.ShowMessage("Error occurred", $"ADD_LANGUAGE failed:\n{ex.Message}");
+                }
+            }
+            else if (message.StartsWith("EDIT_LANGUAGE_CONFIG:"))
+            {
+                if (proj.Config == null) return;
+                try
+                {
+                    var json = message["EDIT_LANGUAGE_CONFIG:".Length..];
+                    var req = JsonSerializer.Deserialize<EditLanguageConfigRequest>(json);
+                    if (req == null)
+                    {
+                        window.ShowMessage("Error occurred", "Invalid request payload.");
+                        return;
+                    }
+
+                    var result = proj.EditLanguageConfig(req.key, req.path, req.setMain);
+                    if (!result.success) window.ShowMessage(result.value1, result.value2);
+                    else OpenProject(window, proj.ProjectFilePath);
+                }
+                catch (Exception ex)
+                {
+                    window.ShowMessage("Error occurred", $"EDIT_LANGUAGE_CONFIG failed:\n{ex.Message}");
                 }
             }
             else if (message.StartsWith("EDIT_KEY:"))
@@ -241,6 +281,7 @@ public class Program
             projectName = proj.Config.ProjectName,
             mainLanguage = proj.Config.SourceLanguage,
             languages = proj.Config.Files.Keys,
+            files = proj.Config.Files,
             data = safeData,
             dirtyLanguages = proj.GetDirtyLanguages()
         };

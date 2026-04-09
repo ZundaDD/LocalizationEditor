@@ -32,11 +32,38 @@ let currentLang = "";
 let projectLoaded = false;
 let mainLanguage = "";
 let dirtyLanguages = new Set();
+let languageFiles = {}; // { [langKey]: filePath }
+
+let addLangIsMain = false;
+
+let compileSelectedLang = "";
+let compileSetMain = false;
 
 let contextMenuState = null; // { path: string[], isObject: boolean }
 
 // 记录树节点展开状态（key 为 path 的 JSON 字符串）
 let expandedNodes = new Set();
+
+function updateAddLangMainCheckboxState() {
+    const btn = document.getElementById('toggle-main-lang-btn');
+    const hint = document.getElementById('toggle-main-lang-hint');
+    if (!btn) return;
+
+    // 当当前不存在任何语言时，添加第一个语种必须是主语言
+    const mustBeMain = Array.isArray(languages) && languages.length === 0;
+    if (mustBeMain) addLangIsMain = true;
+
+    btn.disabled = mustBeMain;
+    btn.textContent = addLangIsMain ? '设为主语言' : '不设为主语言';
+    btn.classList.toggle('btn-toggle-active', addLangIsMain);
+    if (hint) hint.textContent = mustBeMain ? '当前无语言：必须设为主语言' : '';
+}
+
+function toggleAddLangMain() {
+    // 手动切换“主语言”状态（无语言时会被禁用）
+    addLangIsMain = !addLangIsMain;
+    updateAddLangMainCheckboxState();
+}
 
 function setMenuEnabled(id, enabled) {
     const el = document.getElementById(id);
@@ -69,8 +96,21 @@ function setAddLanguageEnabled(enabled) {
     }
 }
 
+function setCompileLanguageEnabled(enabled) {
+    const el = document.getElementById('compile-lang-menu-item');
+    if (!el) return;
+    if (enabled) {
+        el.classList.remove('disabled');
+        el.setAttribute('aria-disabled', 'false');
+    } else {
+        el.classList.add('disabled');
+        el.setAttribute('aria-disabled', 'true');
+    }
+}
+
 // 初始状态：未加载项目时禁用“添加语种”
 setAddLanguageEnabled(false);
+setCompileLanguageEnabled(false);
 setMenuEnabled('save-project-menu-item', false);
 
 // 发送创建项目指令
@@ -97,13 +137,16 @@ window.external.receiveMessage(message => {
         const payload = JSON.parse(message.substring(5));
         languages = payload.languages;
         allData = payload.data;
+        languageFiles = payload.files || {};
 
         mainLanguage = payload.mainLanguage || (languages.length > 0 ? languages[0] : "");
         dirtyLanguages = new Set(payload.dirtyLanguages || []);
 
         projectLoaded = true;
         setAddLanguageEnabled(true);
+        setCompileLanguageEnabled(true);
         updateDirtyUI();
+        updateAddLangMainCheckboxState();
         
         if (languages.length > 0) currentLang = mainLanguage || languages[0];
         
@@ -198,6 +241,15 @@ window.external.receiveMessage(message => {
         const path = message.substring("LANG_FILE:".length);
         const input = document.getElementById('new-lang-path');
         if (input) input.value = path;
+    }
+    else if (message.startsWith("LANG_FILE2:")) {
+        try {
+            const payload = JSON.parse(message.substring("LANG_FILE2:".length));
+            if (payload && payload.target === 'compile') {
+                const input = document.getElementById('compile-lang-path');
+                if (input) input.value = payload.path || '';
+            }
+        } catch { }
     }
     else if (message.startsWith("DIRTY_STATE:")) {
         const payload = JSON.parse(message.substring("DIRTY_STATE:".length));
@@ -652,6 +704,7 @@ function editKey() {
 
 function showAddLangModal() {
     if (!projectLoaded) return;
+    updateAddLangMainCheckboxState();
     document.getElementById('modal-overlay').style.display = 'flex';
 }
 
@@ -659,13 +712,23 @@ function closeAddLangModal() {
     document.getElementById('modal-overlay').style.display = 'none';
     document.getElementById('new-lang-key').value = '';
     document.getElementById('new-lang-path').value = '';
-    document.getElementById('is-main-lang').checked = false;
+    addLangIsMain = false;
+    const hint = document.getElementById('toggle-main-lang-hint');
+    if (hint) hint.textContent = '';
+    const btn = document.getElementById('toggle-main-lang-btn');
+    if (btn) {
+        btn.disabled = false;
+        btn.classList.remove('btn-toggle-active');
+        btn.textContent = '不设为主语言';
+    }
 }
 
 function submitAddLang() {
     const key = document.getElementById('new-lang-key').value.trim();
     const path = document.getElementById('new-lang-path').value.trim();
-    const isMain = document.getElementById('is-main-lang').checked;
+    // 兜底：无语言时必定为主语言
+    const mustBeMain = Array.isArray(languages) && languages.length === 0;
+    const isMain = mustBeMain ? true : !!addLangIsMain;
 
     if (!key || !path) {
         alert("请填写语言标识符，并选择一个已存在的语言文件路径");
@@ -681,6 +744,200 @@ function submitAddLang() {
     window.external.sendMessage("ADD_LANGUAGE:" + JSON.stringify(payload));
     
     closeAddLangModal();
+}
+
+function showCompileLangModal() {
+    if (!projectLoaded) return;
+
+    compileSetMain = false;
+    compileSelectedLang = mainLanguage || ((languages && languages.length) ? languages[0] : "");
+    renderCompileLangList();
+
+    const pathInput = document.getElementById('compile-lang-path');
+    if (pathInput) pathInput.value = (languageFiles && compileSelectedLang) ? (languageFiles[compileSelectedLang] || '') : '';
+
+    document.getElementById('compile-modal-overlay').style.display = 'flex';
+}
+
+function closeCompileLangModal() {
+    document.getElementById('compile-modal-overlay').style.display = 'none';
+    const pathInput = document.getElementById('compile-lang-path');
+    if (pathInput) pathInput.value = '';
+    compileSelectedLang = "";
+    compileSetMain = false;
+}
+
+function renderCompileLangList() {
+    const list = document.getElementById('compile-lang-list');
+    if (!list) return;
+    list.innerHTML = '';
+
+    (languages || []).forEach(lang => {
+        const row = document.createElement('div');
+        row.className = 'select-item' + (lang === compileSelectedLang ? ' selected' : '');
+        row.tabIndex = 0;
+        row.role = 'button';
+
+        const left = document.createElement('div');
+        left.textContent = lang;
+
+        const right = document.createElement('div');
+        right.className = 'subtle';
+        right.textContent = (lang === mainLanguage) ? '主语言' : '';
+
+        const applySelect = () => {
+            compileSelectedLang = lang;
+            compileSetMain = false;
+            renderCompileLangList();
+            const pathInput = document.getElementById('compile-lang-path');
+            if (pathInput) pathInput.value = (languageFiles && compileSelectedLang) ? (languageFiles[compileSelectedLang] || '') : '';
+        };
+
+        row.onclick = applySelect;
+        row.onkeydown = (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                applySelect();
+            }
+        };
+
+        row.appendChild(left);
+        row.appendChild(right);
+        list.appendChild(row);
+    });
+}
+
+function pickCompileLanguageFile() {
+    if (!projectLoaded) return;
+    window.external.sendMessage("PICK_LANGUAGE_FILE2:" + JSON.stringify({ target: "compile" }));
+}
+
+function markCompileAsMain() {
+    if (!compileSelectedLang) {
+        alert('请先选择一个语种');
+        return;
+    }
+    compileSetMain = true;
+}
+
+function submitCompileLang() {
+    if (!projectLoaded) return;
+    if (!compileSelectedLang) {
+        alert('请选择一个语种');
+        return;
+    }
+
+    const path = (document.getElementById('compile-lang-path').value || '').trim();
+    if (!path) {
+        alert('请选择语种文件路径');
+        return;
+    }
+
+    const payload = {
+        key: compileSelectedLang,
+        path: path,
+        setMain: !!compileSetMain
+    };
+
+    window.external.sendMessage("EDIT_LANGUAGE_CONFIG:" + JSON.stringify(payload));
+    closeCompileLangModal();
+}
+
+function escapeHtml(s) {
+    return (s ?? '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#039;');
+}
+
+function renderMarkdown(md) {
+    // 轻量渲染：支持 标题/段落/列表/粗体/行内代码/代码块/链接
+    const parts = String(md ?? '').split('```');
+    let html = '';
+
+    for (let i = 0; i < parts.length; i++) {
+        const chunk = parts[i];
+        if (i % 2 === 1) {
+            // code fence（忽略语言标识）
+            const lines = chunk.replaceAll('\r\n', '\n').split('\n');
+            if (lines.length > 0 && /^[a-zA-Z0-9_-]+$/.test(lines[0].trim())) lines.shift();
+            html += `<pre><code>${escapeHtml(lines.join('\n'))}</code></pre>`;
+            continue;
+        }
+
+        const lines = chunk.replaceAll('\r\n', '\n').split('\n');
+        let inList = false;
+        for (const raw of lines) {
+            const line = raw.trimEnd();
+            const t = line.trim();
+
+            if (!t) {
+                if (inList) { html += '</ul>'; inList = false; }
+                continue;
+            }
+
+            const h3 = t.match(/^###\s+(.+)$/);
+            const h2 = t.match(/^##\s+(.+)$/);
+            const h1 = t.match(/^#\s+(.+)$/);
+            if (h3 || h2 || h1) {
+                if (inList) { html += '</ul>'; inList = false; }
+                const level = h3 ? 3 : h2 ? 2 : 1;
+                const text = escapeHtml((h3 || h2 || h1)[1]);
+                html += `<h${level}>${text}</h${level}>`;
+                continue;
+            }
+
+            const li = t.match(/^[-*]\s+(.+)$/);
+            if (li) {
+                if (!inList) { html += '<ul>'; inList = true; }
+                html += `<li>${escapeHtml(li[1])}</li>`;
+                continue;
+            }
+
+            if (inList) { html += '</ul>'; inList = false; }
+
+            let p = escapeHtml(t);
+            // inline code
+            p = p.replace(/`([^`]+)`/g, (_, c) => `<code>${escapeHtml(c)}</code>`);
+            // bold
+            p = p.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+            // links
+            p = p.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, text, url) => `<a href="${escapeHtml(url)}" target="_blank" rel="noreferrer">${escapeHtml(text)}</a>`);
+            html += `<p>${p}</p>`;
+        }
+        if (inList) html += '</ul>';
+    }
+
+    return html || '<p>(空)</p>';
+}
+
+async function loadHelpMarkdown() {
+    // 从 wwwroot/tutorial.md 读取，方便用户直接编辑文件来更新内容
+    const res = await fetch('tutorial.md', { cache: 'no-store' });
+    if (!res.ok) throw new Error('tutorial.md not found');
+    return await res.text();
+}
+
+async function showHelpModal() {
+    const overlay = document.getElementById('help-modal-overlay');
+    const content = document.getElementById('help-content');
+    if (!overlay || !content) return;
+    overlay.style.display = 'flex';
+    content.textContent = '正在加载教程...';
+
+    try {
+        const md = await loadHelpMarkdown();
+        content.innerHTML = renderMarkdown(md);
+    } catch (e) {
+        content.innerHTML = renderMarkdown(`# 教程未找到\n\n请创建文件：\`wwwroot/tutorial.md\`\n`);
+    }
+}
+
+function closeHelpModal() {
+    const overlay = document.getElementById('help-modal-overlay');
+    if (overlay) overlay.style.display = 'none';
 }
 
 window.external.sendMessage("APP_READY");

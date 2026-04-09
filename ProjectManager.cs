@@ -106,6 +106,43 @@ public class ProjectManager
         }
     }
 
+    public TwoResult<string> EditLanguageConfig(string key, string path, bool setMain)
+    {
+        try
+        {
+            if (Config == null || string.IsNullOrWhiteSpace(ProjectFilePath))
+                return new(false, "Error occurred", "Project not loaded.");
+
+            key = (key ?? "").Trim();
+            path = (path ?? "").Trim();
+
+            if (string.IsNullOrWhiteSpace(key))
+                return new(false, "Error occurred", "Language key cannot be empty.");
+            if (string.IsNullOrWhiteSpace(path))
+                return new(false, "Error occurred", "Language path cannot be empty.");
+
+            if (!Config.Files.ContainsKey(key))
+                return new(false, "Error occurred", $"Language not registered: {key}");
+
+            if (!File.Exists(path))
+                return new(false, "Error occurred", $"Language file not found:\n{path}");
+
+            // 更新配置（路径/主语言）
+            Config.Files[key] = path;
+            if (setMain) Config.SourceLanguage = key;
+
+            // 重新加载该语言缓存（避免继续使用旧文件内容）
+            Cache[key] = converter.LoadFrom(path);
+
+            SaveConfig();
+            return new(true, "", "");
+        }
+        catch (Exception ex)
+        {
+            return new(false, "Error occurred", $"Unknown exception:\n{ex.Message}");
+        }
+    }
+
     public TwoResult<string> SaveProject()
     {
         try

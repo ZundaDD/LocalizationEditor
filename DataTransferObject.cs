@@ -14,6 +14,10 @@ public static class Message
 
 public record AddLanguageRequest(string key, string path, bool isMain);
 
+public record PickLanguageFileRequest(string target);
+
+public record EditLanguageConfigRequest(string key, string path, bool setMain);
+
 public record EditKeyRequest(string lang, string[] path, string value);
 
 public record AddKeyRequest(string[] parentPath, string key, string kind);

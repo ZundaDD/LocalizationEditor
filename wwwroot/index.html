@@ -54,12 +54,15 @@
                 <div class="menu-item disabled" id="add-lang-menu-item" aria-disabled="true" onclick="showAddLangModal()">
                     <span>添加语种文件...</span>
                 </div>
+                <div class="menu-item disabled" id="compile-lang-menu-item" aria-disabled="true" onclick="showCompileLangModal()">
+                    <span>编辑语种...</span>
+                </div>
             </div>
         </div>
         <div class="menu-dropdown">
             <div class="menu-title">帮助(H)</div>
             <div class="menu-content">
-                <div class="menu-item">
+                <div class="menu-item" onclick="showHelpModal()">
                     <span>关于编辑器</span>
                 </div>
             </div>
@@ -106,14 +109,53 @@
                         <button class="btn btn-secondary" type="button" onclick="pickLanguageFile()">选择...</button>
                     </div>
                 </div>
-                <div class="form-group checkbox-group">
-                    <input type="checkbox" id="is-main-lang">
-                    <label for="is-main-lang">设为主语言</label>
+                <div class="form-group">
+                    <label>主语言</label>
+                    <div class="inline-row">
+                        <button class="btn btn-secondary btn-toggle" id="toggle-main-lang-btn" type="button" onclick="toggleAddLangMain()">不设为主语言</button>
+                        <div class="subtle-text" id="toggle-main-lang-hint"></div>
+                    </div>
                 </div>
             </div>
             <div class="modal-footer">
                 <button class="btn btn-secondary" onclick="closeAddLangModal()">取消</button>
                 <button class="btn" onclick="submitAddLang()">添加</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="compile-modal-overlay" class="modal-overlay" style="display:none;">
+        <div class="modal-box modal-box-wide">
+            <div class="modal-header">编辑语种</div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>已注册语种</label>
+                    <div id="compile-lang-list" class="select-list"></div>
+                </div>
+                <div class="form-group">
+                    <label>文件路径</label>
+                    <div style="display:flex; gap:10px; align-items:center;">
+                        <input type="text" id="compile-lang-path" placeholder="请选择 .hjson 文件" readonly style="flex:1;">
+                        <button class="btn btn-secondary" type="button" onclick="pickCompileLanguageFile()">选择...</button>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeCompileLangModal()">取消</button>
+                <button class="btn btn-secondary" onclick="markCompileAsMain()">设为主语言</button>
+                <button class="btn" onclick="submitCompileLang()">确定</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="help-modal-overlay" class="modal-overlay" style="display:none;">
+        <div class="modal-box modal-box-wide">
+            <div class="modal-header">关于编辑器</div>
+            <div class="modal-body">
+                <div id="help-content" class="md-content">正在加载教程...</div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeHelpModal()">关闭</button>
             </div>
         </div>
     </div>
