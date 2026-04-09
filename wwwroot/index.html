@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Localize Editor</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+    <div id="menubar">
+        <div class="menu-dropdown">
+            <div class="menu-title">文件(F)</div>
+            <div class="menu-content">
+                <div class="menu-item" onclick="createProject()">
+                    <span>新建项目</span>
+                    <span class="shortcut">Ctrl+N</span>
+                </div>
+                <div class="menu-item" onclick="openProject()">
+                    <span>打开项目</span>
+                    <span class="shortcut">Ctrl+O</span>
+                </div>
+                <div class="menu-separator"></div>
+                <div class="menu-item disabled" id="save-project-menu-item" aria-disabled="true" onclick="saveProject()">
+                    <span id="save-project-label">保存项目</span>
+                    <span class="shortcut">Ctrl+S</span>
+                </div>
+                <div class="menu-separator"></div>
+                <div class="menu-item" onclick="window.close()">
+                    <span>退出</span>
+                    <span class="shortcut">Alt+F4</span>
+                </div>
+            </div>
+        </div>
+        <div class="menu-dropdown">
+            <div class="menu-title">语言(L)</div>
+            <div class="menu-content">
+                <div class="menu-item disabled" id="add-lang-menu-item" aria-disabled="true" onclick="showAddLangModal()">
+                    <span>添加语种文件...</span>
+                </div>
+            </div>
+        </div>
+        <div class="menu-dropdown">
+            <div class="menu-title">帮助(H)</div>
+            <div class="menu-content">
+                <div class="menu-item">
+                    <span>关于编辑器</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="main-workspace">
+        <div id="sidebar">
+            <div id="tree-container"></div>
+        </div>
+
+        <div id="editor">
+            <div id="empty-state">请先打开或创建一个项目，并选择节点</div>
+
+            <div id="editor-content">
+                <h2 id="key-title">Node</h2>
+                <div class="info" id="pathInfo">路径: </div>
+
+                <div class="lang-selectors" id="lang-container"></div>
+
+                <textarea id="valInput" placeholder="请输入当前语言的文本..."></textarea>
+                <button class="btn" onclick="editKey()">暂存更改</button>
+                <span id="save-msg">已暂存，选择项目-保存项目写入文件</span>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+
+    <div id="modal-overlay" class="modal-overlay">
+        <div class="modal-box">
+            <div class="modal-header">添加语种文件</div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>语言标识符</label>
+                    <input type="text" id="new-lang-key" placeholder="en-US">
+                </div>
+                <div class="form-group">
+                    <label>文件路径</label>
+                    <div style="display:flex; gap:10px; align-items:center;">
+                        <input type="text" id="new-lang-path" placeholder="请选择已有的 .hjson 文件" readonly style="flex:1;">
+                        <button class="btn btn-secondary" type="button" onclick="pickLanguageFile()">选择...</button>
+                    </div>
+                </div>
+                <div class="form-group checkbox-group">
+                    <input type="checkbox" id="is-main-lang">
+                    <label for="is-main-lang">设为主语言</label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeAddLangModal()">取消</button>
+                <button class="btn" onclick="submitAddLang()">添加</button>
+            </div>
+        </div>
+    </div>
+</body>
+
+</html>

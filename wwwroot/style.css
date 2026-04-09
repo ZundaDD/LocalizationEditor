@@ -1,0 +1,372 @@
+/* 基础布局改成上下结构 */
+body {
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: #fdfdfd;
+    color: #333;
+    overflow: hidden;
+}
+
+/* ======== 顶部菜单栏样式 ======== */
+#menubar {
+    display: flex;
+    background: #ffffff;
+    border-bottom: 1px solid #e0e0e0;
+    padding: 0 10px;
+    height: 30px;
+    align-items: center;
+    user-select: none;
+    z-index: 100;
+}
+
+.menu-dropdown {
+    position: relative;
+}
+
+.menu-title {
+    padding: 2px 10px;
+    font-size: 13px;
+    color: #333;
+    border-radius: 4px;
+    cursor: default;
+}
+
+.menu-title:hover,
+.menu-dropdown.active .menu-title {
+    background: #e5f3ff;
+    color: #000;
+}
+
+/* 下拉框本框 */
+.menu-content {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    background: #ffffff;
+    min-width: 200px;
+    border: 1px solid #cccccc;
+    border-radius: 4px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    padding: 4px 0;
+    z-index: 1000;
+}
+
+/* 显示下拉框的控制类 */
+.menu-dropdown.active .menu-content {
+    display: block;
+}
+
+/* 菜单项 */
+.menu-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 6px 16px;
+    font-size: 13px;
+    color: #333;
+    cursor: default;
+}
+
+.menu-item:hover {
+    background: #f2f2f2;
+}
+
+/* 未加载项目时禁用项（不可点击） */
+.menu-item.disabled {
+    color: #aaa;
+    pointer-events: none;
+}
+
+.menu-item.disabled:hover {
+    background: transparent;
+}
+
+/* 类似 Win10/11 的悬浮灰底 */
+
+/* 快捷键提示文字 */
+.shortcut {
+    color: #888;
+    font-size: 12px;
+    margin-left: 20px;
+}
+
+/* 分割线 */
+.menu-separator {
+    height: 1px;
+    background: #e0e0e0;
+    margin: 4px 0;
+}
+
+/* ================================ */
+
+
+/* 主工作区改成左右结构占满剩余空间 */
+#main-workspace {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+}
+
+/* 侧边栏和编辑器的样式保持基本不变 */
+#sidebar {
+    width: 30%;
+    border-right: 1px solid #eaeaea;
+    padding: 20px;
+    overflow-y: auto;
+    background: #fafafa;
+}
+
+#proj-title {
+    margin: 0 0 15px 0;
+    font-size: 13px;
+    color: #888;
+    font-weight: 500;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #eaeaea;
+}
+
+details {
+    margin-left: 12px;
+}
+
+summary {
+    cursor: pointer;
+    padding: 6px 4px;
+    user-select: none;
+    font-size: 14px;
+    font-weight: 500;
+    outline: none;
+    border-radius: 4px;
+}
+
+summary:hover {
+    background: #ebebeb;
+}
+
+.leaf {
+    margin-left: 20px;
+    padding: 6px;
+    font-size: 13px;
+    color: #666;
+    cursor: pointer;
+    border-radius: 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.leaf:hover,
+.leaf.active {
+    background: #e3f2fd;
+    color: #0056b3;
+}
+
+#editor {
+    flex: 1;
+    padding: 40px;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    overflow-y: auto;
+}
+
+h2 {
+    margin: 0 0 5px 0;
+    font-weight: 400;
+    color: #222;
+    font-size: 24px;
+    border-bottom: 1px solid #eaeaea;
+    padding-bottom: 10px;
+}
+
+.info {
+    font-size: 13px;
+    color: #888;
+}
+
+.lang-selectors {
+    display: flex;
+    gap: 15px;
+    margin-top: 10px;
+}
+
+.lang-selectors label {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 14px;
+    cursor: pointer;
+}
+
+textarea {
+    width: 100%;
+    max-width: 600px;
+    height: 150px;
+    padding: 12px;
+    font-size: 15px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    resize: vertical;
+    font-family: inherit;
+}
+
+textarea:focus {
+    border-color: #007aff;
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.1);
+}
+
+.btn {
+    padding: 8px 16px;
+    background: #222;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    align-self: flex-start;
+    transition: 0.2s;
+}
+
+.btn:hover {
+    background: #444;
+}
+
+#editor-content {
+    display: none;
+    flex-direction: column;
+    gap: 15px;
+}
+
+#empty-state {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: #aaa;
+    font-size: 18px;
+}
+
+#save-msg {
+    color: #28a745;
+    font-size: 13px;
+    opacity: 0;
+    transition: 0.3s;
+    margin-top: 10px;
+}
+
+/* 模态弹窗遮罩层 */
+.modal-overlay {
+    display: none;
+    /* 默认隐藏 */
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.3);
+    backdrop-filter: blur(2px);
+    /* 现代感毛玻璃效果 */
+    z-index: 2000;
+    justify-content: center;
+    align-items: center;
+}
+
+/* 弹窗主体 */
+.modal-box {
+    background: #fff;
+    width: 400px;
+    border-radius: 8px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+    overflow: hidden;
+    animation: modalFadeIn 0.2s ease-out;
+}
+
+@keyframes modalFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(-20px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.modal-header {
+    padding: 20px 25px 10px 25px;
+    font-size: 18px;
+    font-weight: 500;
+    color: #222;
+}
+
+.modal-body {
+    padding: 10px 25px 20px 25px;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.form-group label {
+    font-size: 13px;
+    color: #666;
+}
+
+.form-group input[type="text"] {
+    padding: 8px 12px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 14px;
+    outline: none;
+}
+
+.form-group input:focus {
+    border-color: #007aff;
+}
+
+/* 复选框样式 */
+.checkbox-group {
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    margin-top: 5px;
+}
+
+.checkbox-group input {
+    cursor: pointer;
+}
+
+.checkbox-group label {
+    color: #333;
+    cursor: pointer;
+    user-select: none;
+}
+
+.modal-footer {
+    padding: 15px 25px;
+    background: #f9f9f9;
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    border-top: 1px solid #eee;
+}
+
+/* 按钮样式微调 */
+.btn-secondary {
+    background: #eee;
+    color: #444;
+}
+
+.btn-secondary:hover {
+    background: #e0e0e0;
+}
