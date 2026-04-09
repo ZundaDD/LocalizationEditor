@@ -1,0 +1,52 @@
+name: Auto Release Localization Editor
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build-and-release:
+    name: Build for ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        # 定义需要打包的操作系统和对应的 .NET RID
+        include:
+          - os: windows-latest
+            rid: win-x64
+            archive_name: LocalizationEditor-win-x64
+          - os: macos-latest
+            rid: osx-arm64
+            archive_name: LocalizationEditor-mac-arm64
+          - os: ubuntu-latest
+            rid: linux-x64
+            archive_name: LocalizationEditor-linux-x64
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Publish App
+        run: dotnet publish -c Release -r ${{ matrix.rid }} --self-contained true -p:PublishSingleFile=true -o ./publish_output
+
+      - name: Zip Release (Windows)
+        if: matrix.os == 'windows-latest'
+        run: Compress-Archive -Path ./publish_output/* -DestinationPath ./${{ matrix.archive_name }}.zip
+
+      - name: Zip Release (Mac/Linux)
+        if: matrix.os != 'windows-latest'
+        run: zip -r ../${{ matrix.archive_name }}.zip ./*
+        working-directory: ./publish_output
+
+      - name: Upload to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ matrix.archive_name }}.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
