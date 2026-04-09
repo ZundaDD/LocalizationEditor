@@ -33,6 +33,8 @@ let projectLoaded = false;
 let mainLanguage = "";
 let dirtyLanguages = new Set();
 
+let contextMenuState = null; // { path: string[], isObject: boolean }
+
 function setMenuEnabled(id, enabled) {
     const el = document.getElementById(id);
     if (!el) return;
@@ -161,6 +163,8 @@ function buildTreeDOM(obj, keyName, path) {
         details.open = true;
         const summary = document.createElement('summary');
         summary.textContent = keyName;
+        summary.dataset.path = JSON.stringify(path);
+        summary.dataset.nodeType = 'object';
         details.appendChild(summary);
         for (const key in obj) {
             details.appendChild(buildTreeDOM(obj[key], key, [...path, key]));
@@ -171,6 +175,8 @@ function buildTreeDOM(obj, keyName, path) {
         div.className = 'leaf';
         div.textContent = keyName;
         div.onclick = () => openEditor(keyName, path);
+        div.dataset.path = JSON.stringify(path);
+        div.dataset.nodeType = 'leaf';
         return div;
     }
 }
@@ -195,6 +201,242 @@ function openEditor(key, path) {
     
     renderLangSelectors();
     loadValueIntoEditor();
+}
+
+function hideTreeContextMenu() {
+    const menu = document.getElementById('tree-context-menu');
+    if (!menu) return;
+    menu.style.display = 'none';
+    menu.innerHTML = '';
+    contextMenuState = null;
+}
+
+document.addEventListener('click', function(e) {
+    const menu = document.getElementById('tree-context-menu');
+    if (!menu) return;
+    if (menu.style.display === 'none') return;
+    if (!menu.contains(e.target)) hideTreeContextMenu();
+});
+
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') hideTreeContextMenu();
+});
+
+// 在树区域统一接管右键菜单（屏蔽浏览器默认菜单）
+document.addEventListener('contextmenu', function(e) {
+    const tree = document.getElementById('tree-container');
+    if (!tree) return;
+    if (!tree.contains(e.target)) return;
+
+    // 树区域内：不出现浏览器默认右键菜单
+    e.preventDefault();
+
+    // 找到最近的可操作节点（Object 的 summary / 叶子 div.leaf）
+    const nodeEl = e.target.closest('summary,[data-node-type="leaf"]');
+    if (!nodeEl || !tree.contains(nodeEl)) {
+        showRootContextMenu(e.clientX, e.clientY);
+        return;
+    }
+
+    const rawPath = nodeEl.dataset.path;
+    if (!rawPath) return;
+    let path;
+    try { path = JSON.parse(rawPath); } catch { return; }
+
+    const isObject = nodeEl.tagName.toLowerCase() === 'summary' || nodeEl.dataset.nodeType === 'object';
+    showTreeContextMenu(e.clientX, e.clientY, path, isObject);
+}, true);
+
+function showRootContextMenu(x, y) {
+    if (!projectLoaded) return;
+    const menu = document.getElementById('tree-context-menu');
+    if (!menu) return;
+
+    contextMenuState = { path: [], isObject: true };
+    menu.innerHTML = '';
+
+    const addItem = (label, onClick, opts = {}) => {
+        const item = document.createElement('div');
+        item.className = 'cm-item' + (opts.danger ? ' danger' : '') + (opts.disabled ? ' disabled' : '');
+        item.textContent = label;
+        if (!opts.disabled) {
+            item.onclick = () => {
+                hideTreeContextMenu();
+                onClick();
+            };
+        }
+        menu.appendChild(item);
+    };
+
+    const addSep = () => {
+        const sep = document.createElement('div');
+        sep.className = 'cm-sep';
+        menu.appendChild(sep);
+    };
+
+    addItem('添加 Object', () => addChildKey([], 'object'));
+    addItem('添加 string', () => addChildKey([], 'string'));
+
+    // 定位与防止出屏
+    menu.style.display = 'block';
+    menu.style.left = x + 'px';
+    menu.style.top = y + 'px';
+
+    const rect = menu.getBoundingClientRect();
+    let nx = x, ny = y;
+    if (rect.right > window.innerWidth) nx = Math.max(8, window.innerWidth - rect.width - 8);
+    if (rect.bottom > window.innerHeight) ny = Math.max(8, window.innerHeight - rect.height - 8);
+    menu.style.left = nx + 'px';
+    menu.style.top = ny + 'px';
+}
+
+function showTreeContextMenu(x, y, path, isObject) {
+    if (!projectLoaded) return;
+    const menu = document.getElementById('tree-context-menu');
+    if (!menu) return;
+
+    contextMenuState = { path, isObject };
+    menu.innerHTML = '';
+
+    const addItem = (label, onClick, opts = {}) => {
+        const item = document.createElement('div');
+        item.className = 'cm-item' + (opts.danger ? ' danger' : '') + (opts.disabled ? ' disabled' : '');
+        item.textContent = label;
+        if (!opts.disabled) {
+            item.onclick = () => {
+                hideTreeContextMenu();
+                onClick();
+            };
+        }
+        menu.appendChild(item);
+    };
+
+    const addSep = () => {
+        const sep = document.createElement('div');
+        sep.className = 'cm-sep';
+        menu.appendChild(sep);
+    };
+
+    addItem('重命名', () => renameKeyAtPath(path));
+
+    if (isObject) {
+        addSep();
+        addItem('添加子 Object', () => addChildKey(path, 'object'));
+        addItem('添加子 string', () => addChildKey(path, 'string'));
+    }
+
+    addSep();
+    addItem('删除', () => deleteKeyAtPath(path), { danger: true });
+
+    // 定位与防止出屏
+    menu.style.display = 'block';
+    menu.style.left = x + 'px';
+    menu.style.top = y + 'px';
+
+    const rect = menu.getBoundingClientRect();
+    let nx = x, ny = y;
+    if (rect.right > window.innerWidth) nx = Math.max(8, window.innerWidth - rect.width - 8);
+    if (rect.bottom > window.innerHeight) ny = Math.max(8, window.innerHeight - rect.height - 8);
+    menu.style.left = nx + 'px';
+    menu.style.top = ny + 'px';
+}
+
+function getParentAndKey(path) {
+    if (!path || path.length === 0) return null;
+    const parentPath = path.slice(0, -1);
+    const key = path[path.length - 1];
+    return { parentPath, key };
+}
+
+function getObjectByPath(dataObj, path) {
+    let target = dataObj;
+    for (let i = 0; i < path.length; i++) {
+        if (target === undefined || target === null) return null;
+        target = target[path[i]];
+    }
+    return target;
+}
+
+function ensureObjectByPath(dataObj, path) {
+    let target = dataObj;
+    for (let i = 0; i < path.length; i++) {
+        const k = path[i];
+        if (typeof target[k] !== 'object' || target[k] === null) target[k] = {};
+        target = target[k];
+    }
+    return target;
+}
+
+function renameKeyAtPath(path) {
+    const info = getParentAndKey(path);
+    if (!info) return;
+    const oldKey = info.key;
+
+    const newKey = prompt('请输入新的键名', oldKey);
+    if (!newKey) return;
+    const trimmed = newKey.trim();
+    if (!trimmed) return;
+    if (trimmed === oldKey) return;
+    if (trimmed.includes('.') || trimmed.includes(':')) {
+        alert('键名不支持包含 "." 或 ":"（请使用普通键名）');
+        return;
+    }
+
+    // 如果正在编辑该节点，先更新本地路径/UI（后端会回推 LOAD 再校正）
+    if (currentEditingPath && currentEditingPath.join('\0') === path.join('\0')) {
+        currentEditingPath = [...info.parentPath, trimmed];
+        const title = document.getElementById('key-title');
+        if (title) title.textContent = trimmed;
+        const pathInfo = document.getElementById('pathInfo');
+        if (pathInfo) pathInfo.textContent = "路径: " + currentEditingPath.join(" > ");
+    }
+
+    const payload = { path: path, newKey: trimmed };
+    window.external.sendMessage("RENAME_KEY:" + JSON.stringify(payload));
+}
+
+function deleteKeyAtPath(path) {
+    const info = getParentAndKey(path);
+    if (!info) return;
+    const key = info.key;
+
+    const ok = confirm(`确认删除键：${path.join(' > ')} ？`);
+    if (!ok) return;
+
+    // 如果删的是当前正在编辑的节点或其祖先，先关闭编辑器
+    const isPrefix = (full, prefix) => {
+        if (!full || !prefix) return false;
+        if (prefix.length > full.length) return false;
+        for (let i = 0; i < prefix.length; i++) if (full[i] !== prefix[i]) return false;
+        return true;
+    };
+    if (currentEditingPath && isPrefix(currentEditingPath, path)) {
+        currentEditingPath = [];
+        const empty = document.getElementById('empty-state');
+        if (empty) {
+            empty.style.display = 'flex';
+            empty.textContent = '请选择一个节点开始编辑';
+        }
+        const editorContent = document.getElementById('editor-content');
+        if (editorContent) editorContent.style.display = 'none';
+    }
+
+    const payload = { path: path };
+    window.external.sendMessage("DELETE_KEY:" + JSON.stringify(payload));
+}
+
+function addChildKey(parentPath, kind) {
+    const key = prompt(`请输入要添加的子键名（${kind === 'object' ? 'Object' : 'string'}）`, '');
+    if (!key) return;
+    const trimmed = key.trim();
+    if (!trimmed) return;
+    if (trimmed.includes('.') || trimmed.includes(':')) {
+        alert('键名不支持包含 "." 或 ":"（请使用普通键名）');
+        return;
+    }
+
+    const payload = { parentPath: parentPath, key: trimmed, kind: kind };
+    window.external.sendMessage("ADD_KEY:" + JSON.stringify(payload));
 }
 
 function renderLangSelectors() {
@@ -299,3 +541,5 @@ function submitAddLang() {
     
     closeAddLangModal();
 }
+
+window.external.sendMessage("APP_READY");

@@ -1,4 +1,5 @@
 ﻿using Photino.NET;
+using System.Drawing;
 using System.Text.Json;
 
 namespace LocalizationEditor;
@@ -9,23 +10,67 @@ public class Program
 
     private static PathSelector pathSelect = new();
 
-    private record AddLanguageRequest(string key, string path, bool isMain);
-    private record EditKeyRequest(string lang, string[] path, string value);
+    private static AppState appState = AppState.Default;
+
 
     [STAThread]
     static void Main(string[] args)
     {
+        appState = AppStateUtil.Load();
+
         var window = new PhotinoWindow()
-            .SetTitle("Localize Editor")
+            .SetTitle("Localization Editor")
             .SetUseOsDefaultSize(false)
             .SetIconFile("favicon.ico")
-            .SetSize(1080, 720)
+            .SetSize(appState.WindowWidth ?? 1080, appState.WindowHeight ?? 720)
             .Load("wwwroot/index.html");
+        window.ContextMenuEnabled = false;
+
+        window.RegisterWindowClosingHandler((sender, args) =>
+        {
+            SaveWindowState(window);
+
+            if (proj.Config == null || !proj.IsDirty) return false;
+
+            var result = window.ShowMessage(
+                "保存",
+                "项目存在未保存更改，是否保存并退出",
+                PhotinoDialogButtons.YesNoCancel,
+                PhotinoDialogIcon.Question);
+
+            if (result == PhotinoDialogResult.Yes)
+            {
+                var saveResult = proj.SaveProject();
+                if (!saveResult.success)
+                {
+                    window.ShowMessage(saveResult.value1, saveResult.value2);
+                    return true;
+                }
+
+                window.SendWebMessage("DIRTY_STATE:" + JsonSerializer.Serialize(new { dirtyLanguages = proj.GetDirtyLanguages() }));
+                window.SendWebMessage("SAVE_SUCCESS");
+                UpdateWindowTitle(window);
+                return false;
+            }
+
+            if (result == PhotinoDialogResult.No) return false;
+
+            return true;
+        });
 
         window.RegisterWebMessageReceivedHandler((sender, message) =>
         {
             Console.WriteLine($"Photino.NET: \"{window.Title}\".ReceiveMessage({message})");
-            if (message == "OPEN_PROJECT")
+
+            if (message == "APP_READY")
+            {
+                if (!string.IsNullOrWhiteSpace(appState.LastProjectPath) && File.Exists(appState.LastProjectPath))
+                    OpenProject(window, appState.LastProjectPath);
+
+                if (appState.WindowLeft.HasValue && appState.WindowTop.HasValue)
+                    window.SetLocation(new Point(appState.WindowLeft.Value, appState.WindowTop.Value));
+            }
+            else if (message == "OPEN_PROJECT")
             {
                 var result = SelectProject(window);
                 if (result.success) OpenProject(window, result.value);
@@ -43,6 +88,7 @@ public class Program
                 {
                     window.SendWebMessage("DIRTY_STATE:" + JsonSerializer.Serialize(new { dirtyLanguages = proj.GetDirtyLanguages() }));
                     window.SendWebMessage("SAVE_SUCCESS");
+                    UpdateWindowTitle(window);
                 }
                 else window.ShowMessage(result.value1, result.value2);
 
@@ -80,12 +126,76 @@ public class Program
 
                     var result = proj.EditLanguage(req.lang, req.path, req.value);
                     if (!result.success) window.ShowMessage(result.value1, result.value2);
-                    else window.SendWebMessage("DIRTY_STATE:" + JsonSerializer.Serialize(new { dirtyLanguages = proj.GetDirtyLanguages() }));
+                    else
+                    {
+                        window.SendWebMessage("DIRTY_STATE:" + JsonSerializer.Serialize(new { dirtyLanguages = proj.GetDirtyLanguages() }));
+                        UpdateWindowTitle(window);
+                    }
                 }
                 catch (Exception ex)
                 {
                     window.ShowMessage("Error occurred", $"EDIT_KEY failed:\n{ex.Message}");
                 }
+            }
+            else if (message.StartsWith("ADD_KEY:"))
+            {
+                try
+                {
+                    if (proj.Config == null) return;
+                    var json = message["ADD_KEY:".Length..];
+                    var req = JsonSerializer.Deserialize<AddKeyRequest>(json);
+                    if (req == null) return;
+
+                    var result = proj.AddKey(req.parentPath, req.key, req.kind);
+                    if (!result.success) window.ShowMessage(result.value1, result.value2);
+                    else
+                    {
+                        window.SendWebMessage("DIRTY_STATE:" + JsonSerializer.Serialize(new { dirtyLanguages = proj.GetDirtyLanguages() }));
+                        UpdateWindowTitle(window);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    window.ShowMessage("Error occurred", $"ADD_KEY failed:\n{ex.Message}");
+                }
+            }
+            else if (message.StartsWith("DELETE_KEY:"))
+            {
+                try
+                {
+                    if (proj.Config == null) return;
+                    var json = message["DELETE_KEY:".Length..];
+                    var req = JsonSerializer.Deserialize<DeleteKeyRequest>(json);
+                    if (req == null) return;
+
+                    var result = proj.DeleteKey(req.path);
+                    if (!result.success) window.ShowMessage(result.value1, result.value2);
+                    else
+                    {
+                        window.SendWebMessage("DIRTY_STATE:" + JsonSerializer.Serialize(new { dirtyLanguages = proj.GetDirtyLanguages() }));
+                        UpdateWindowTitle(window);
+                    }
+                }
+                catch (Exception ex) { window.ShowMessage("Error occurred", $"DELETE_KEY failed:\n{ex.Message}"); }
+            }
+            else if (message.StartsWith("RENAME_KEY:"))
+            {
+                try
+                {
+                    if (proj.Config == null) return;
+                    var json = message["RENAME_KEY:".Length..];
+                    var req = JsonSerializer.Deserialize<RenameKeyRequest>(json);
+                    if (req == null) return;
+
+                    var result = proj.RenameKey(req.path, req.newKey);
+                    if (!result.success) window.ShowMessage(result.value1, result.value2);
+                    else
+                    {
+                        window.SendWebMessage("DIRTY_STATE:" + JsonSerializer.Serialize(new { dirtyLanguages = proj.GetDirtyLanguages() }));
+                        UpdateWindowTitle(window);
+                    }
+                }
+                catch (Exception ex) { window.ShowMessage("Error occurred", $"RENAME_KEY failed:\n{ex.Message}"); }
             }
         });
 
@@ -104,8 +214,17 @@ public class Program
             return;
         }
 
-        var safeData = new Dictionary<string, JsonElement>();
+        appState = appState with { LastProjectPath = path };
+        AppStateUtil.Save(appState);
+        UpdateWindowTitle(window);
+        SendCurrentState(window);
+    }
 
+    private static void SendCurrentState(PhotinoWindow window)
+    {
+        if (proj.Config == null) return;
+
+        var safeData = new Dictionary<string, JsonElement>();
         foreach (var kvp in proj.Cache)
         {
             string plainJson = kvp.Value.ToString(Hjson.Stringify.Plain);
@@ -122,6 +241,36 @@ public class Program
         };
 
         window.SendWebMessage("LOAD:" + JsonSerializer.Serialize(payload));
+        window.SendWebMessage("DIRTY_STATE:" + JsonSerializer.Serialize(new { dirtyLanguages = proj.GetDirtyLanguages() }));
+    }
+
+    private static void UpdateWindowTitle(PhotinoWindow window)
+    {
+        if (proj.Config == null)
+        {
+            window.SetTitle("Localization Editor");
+            return;
+        }
+
+        var title = $"Localization Editor - {proj.Config.ProjectName}";
+        if (proj.IsDirty) title += "(*)";
+        window.SetTitle(title);
+    }
+
+    private static void SaveWindowState(PhotinoWindow window)
+    {
+        try
+        {
+            appState = appState with
+            {
+                WindowLeft = window.Left,
+                WindowTop = window.Top,
+                WindowWidth = window.Width,
+                WindowHeight = window.Height
+            };
+            AppStateUtil.Save(appState);
+        }
+        catch { }
     }
 
     private static void CreateProject(PhotinoWindow window)

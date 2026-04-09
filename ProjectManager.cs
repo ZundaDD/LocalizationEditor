@@ -5,6 +5,12 @@ using Newtonsoft.Json;
 
 namespace LocalizationEditor;
 
+public enum KeyType
+{
+    Object,
+    String
+}
+
 public class ProjectManager
 {
     public ProjectConfig Config { get; private set; } = null!;
@@ -159,6 +165,99 @@ public class ProjectManager
         current[finalKey] = value;
 
         dirtyLanguages.Add(lang);
+        return Message.T;
+    }
+
+    public TwoResult<string> AddKey(string[] parentPath, string key, string kind)
+    {
+        if (Config == null) return Message.E("Project not loaded.");
+        if (string.IsNullOrWhiteSpace(key)) return Message.E("key invalid");
+
+        parentPath ??= Array.Empty<string>();
+        key = key.Trim();
+        kind = (kind ?? "").Trim().ToLowerInvariant();
+        if (kind != "object" && kind != "string") return Message.E("kind invalid (object|string)");
+
+        foreach (var lang in Config.Files.Keys)
+        {
+            if (!Cache.TryGetValue(lang, out var root) || root == null || root.JsonType != JsonType.Object) continue;
+
+            var parentObj = root.Qo().GetOrNull(parentPath);
+            //没有key是被允许的，因为其他语言是对主语言的补丁
+            if (parentObj != null && parentObj.ContainsKey(key)) return Message.E($"key already exists: {lang}:{string.Join('.', parentPath.Append(key))}");
+        }
+
+        foreach (var lang in Config.Files.Keys)
+        {
+            var parentObj = Cache[lang].Qo().GetOrCreate(parentPath);
+            parentObj[key] = kind == "object" ? new JsonObject() : "";
+            dirtyLanguages.Add(lang);
+        }
+
+        return Message.T;
+    }
+
+    public TwoResult<string> DeleteKey(string[] path)
+    {
+        if (Config == null) return Message.E("Project not loaded.");
+        if (path == null || path.Length == 0) return Message.E("path invalid");
+
+        var parentPath = path.Take(path.Length - 1).ToArray();
+        var key = path[^1];
+
+        foreach (var lang in Config.Files.Keys)
+        {
+            if (!Cache.TryGetValue(lang, out var root) || root == null || root.JsonType != JsonType.Object) continue;
+
+            var parentObj = root.Qo().GetOrNull(parentPath);
+            //                          在此移除  ↓
+            if (parentObj != null && parentObj.Remove(key)) dirtyLanguages.Add(lang);
+        }
+
+        return Message.T;
+    }
+
+    public TwoResult<string> RenameKey(string[] path, string newKey)
+    {
+        if (Config == null) return Message.E("Project not loaded.");
+        if (path == null || path.Length == 0) return Message.E("path invalid");
+        if (string.IsNullOrWhiteSpace(newKey)) return Message.E("newKey invalid");
+
+        newKey = newKey.Trim();
+
+        var parentPath = path.Take(path.Length - 1).ToArray();
+        var oldKey = path[^1];
+        if (oldKey == newKey) return Message.T;
+
+        foreach (var lang in Config.Files.Keys)
+        {
+            if (!Cache.TryGetValue(lang, out var root) || root == null || root.JsonType != JsonType.Object) continue;
+
+            var parentObj = root.Qo().GetOrNull(parentPath);
+            if (parentObj == null) continue;
+            if (!parentObj.ContainsKey(oldKey)) continue;
+
+            if (parentObj.ContainsKey(newKey)) return Message.E($"rename conflict: {lang}:{string.Join('.', parentPath.Append(newKey))}");
+        }
+
+        foreach (var lang in Config.Files.Keys)
+        {
+
+            if (!Cache.TryGetValue(lang, out var root) || root == null || root.JsonType != JsonType.Object) continue;
+
+            var parentObj = root.Qo().GetOrNull(parentPath);
+            if (parentObj == null) continue;
+            if (!parentObj.ContainsKey(oldKey)) continue;
+
+            var val = parentObj[oldKey];
+
+            parentObj[newKey] = val;
+
+            parentObj.Remove(oldKey);
+
+            dirtyLanguages.Add(lang);
+        }
+
         return Message.T;
     }
 

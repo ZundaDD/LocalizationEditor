@@ -42,7 +42,7 @@ public class JsonObject : JsonValue, IDictionary<string, JsonValue>, ICollection
     public override sealed JsonValue this[string key]
     {
         get => map[key];
-        set => map[key] = value;
+        set => Add(key, value);
     }
 
     /// <summary>The type of this value.</summary>
@@ -59,7 +59,53 @@ public class JsonObject : JsonValue, IDictionary<string, JsonValue>, ICollection
     public void Add(string key, JsonValue value)
     {
         ArgumentNullException.ThrowIfNull(key);
-        map[key] = value; // json allows duplicate keys
+        // Treat dotted keys like "XX.YY" as nested objects: { XX: { YY: value } }.
+        // This applies consistently at any nesting level.
+        int dot = key.IndexOf('.');
+        if (dot < 0)
+        {
+            map[key] = value; // json allows duplicate keys
+            return;
+        }
+
+        SetPathValue(key, value);
+    }
+
+    void SetPathValue(string dottedKey, JsonValue value)
+    {
+        // Split without allocations for the common "a.b" case; fall back to string.Split for longer keys.
+        var current = this;
+        int start = 0;
+        for (; ; )
+        {
+            int dot = dottedKey.IndexOf('.', start);
+            bool isLast = dot < 0;
+            int end = isLast ? dottedKey.Length : dot;
+
+            if (end == start)
+            {
+                // Empty segment (e.g. "a..b" or ".a") is not meaningful; treat whole key as literal.
+                map[dottedKey] = value;
+                return;
+            }
+
+            string segment = dottedKey.Substring(start, end - start);
+
+            if (isLast)
+            {
+                current.map[segment] = value;
+                return;
+            }
+
+            if (!current.map.TryGetValue(segment, out var next) || next is not JsonObject nextObj)
+            {
+                nextObj = new JsonObject();
+                current.map[segment] = nextObj;
+            }
+
+            current = nextObj;
+            start = dot + 1;
+        }
     }
 
     /// <summary>Adds a new item.</summary>
