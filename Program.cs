@@ -150,13 +150,15 @@ public class Program
                     if (!result.success) window.ShowMessage(result.value1, result.value2);
                     else
                     {
+                        var path = (req.parentPath ?? Array.Empty<string>()).Append(req.key).ToArray();
+                        window.SendWebMessage("ADD_KEY_OK:" + JsonSerializer.Serialize(new { parentPath = req.parentPath ?? Array.Empty<string>(), key = req.key, kind = req.kind, path }));
                         window.SendWebMessage("DIRTY_STATE:" + JsonSerializer.Serialize(new { dirtyLanguages = proj.GetDirtyLanguages() }));
                         UpdateWindowTitle(window);
                     }
                 }
                 catch (Exception ex)
                 {
-                    window.ShowMessage("Error occurred", $"ADD_KEY failed:\n{ex.Message}");
+                    window.ShowMessage("Error occurred", $"ADD_KEY failed:\n{ex}");
                 }
             }
             else if (message.StartsWith("DELETE_KEY:"))
@@ -172,6 +174,7 @@ public class Program
                     if (!result.success) window.ShowMessage(result.value1, result.value2);
                     else
                     {
+                        window.SendWebMessage("DELETE_KEY_OK:" + JsonSerializer.Serialize(new { path = req.path }));
                         window.SendWebMessage("DIRTY_STATE:" + JsonSerializer.Serialize(new { dirtyLanguages = proj.GetDirtyLanguages() }));
                         UpdateWindowTitle(window);
                     }
@@ -191,6 +194,8 @@ public class Program
                     if (!result.success) window.ShowMessage(result.value1, result.value2);
                     else
                     {
+                        var newPath = req.path.Take(req.path.Length - 1).Append(req.newKey).ToArray();
+                        window.SendWebMessage("RENAME_KEY_OK:" + JsonSerializer.Serialize(new { oldPath = req.path, newPath }));
                         window.SendWebMessage("DIRTY_STATE:" + JsonSerializer.Serialize(new { dirtyLanguages = proj.GetDirtyLanguages() }));
                         UpdateWindowTitle(window);
                     }

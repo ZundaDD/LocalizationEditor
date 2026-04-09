@@ -10,7 +10,7 @@ public static class HjsonUtil
         foreach (var key in path)
         {
             if (!current.ContainsKey(key) || current[key] == null || current[key].JsonType != JsonType.Object)
-                current[key] = new JsonObject();
+                current[key] = new WscJsonObject();
             current = current[key].Qo();
         }
         return current;

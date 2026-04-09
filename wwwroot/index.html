@@ -34,6 +34,21 @@
             </div>
         </div>
         <div class="menu-dropdown">
+            <div class="menu-title">编辑(E)</div>
+            <div class="menu-content">
+                <div class="menu-item" onclick="addRootKey('object')">
+                    <span>根添加子对象</span>
+                </div>
+                <div class="menu-item" onclick="addRootKey('string')">
+                    <span>根添加翻译项</span>
+                </div>
+                <div class="menu-separator"></div>
+                <div class="menu-item" onclick="collapseAll()">
+                    <span>全部收起</span>
+                </div>
+            </div>
+        </div>
+        <div class="menu-dropdown">
             <div class="menu-title">语言(L)</div>
             <div class="menu-content">
                 <div class="menu-item disabled" id="add-lang-menu-item" aria-disabled="true" onclick="showAddLangModal()">

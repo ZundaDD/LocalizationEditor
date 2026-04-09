@@ -1,15 +1,7 @@
-using System.Text.Json;
-using System.Text.RegularExpressions;
 using Hjson;
 using Newtonsoft.Json;
 
 namespace LocalizationEditor;
-
-public enum KeyType
-{
-    Object,
-    String
-}
 
 public class ProjectManager
 {
@@ -170,31 +162,47 @@ public class ProjectManager
 
     public TwoResult<string> AddKey(string[] parentPath, string key, string kind)
     {
-        if (Config == null) return Message.E("Project not loaded.");
-        if (string.IsNullOrWhiteSpace(key)) return Message.E("key invalid");
-
-        parentPath ??= Array.Empty<string>();
-        key = key.Trim();
-        kind = (kind ?? "").Trim().ToLowerInvariant();
-        if (kind != "object" && kind != "string") return Message.E("kind invalid (object|string)");
-
-        foreach (var lang in Config.Files.Keys)
+        try
         {
-            if (!Cache.TryGetValue(lang, out var root) || root == null || root.JsonType != JsonType.Object) continue;
+            if (Config == null) return Message.E("Project not loaded.");
+            if (string.IsNullOrWhiteSpace(key)) return Message.E("key invalid");
 
-            var parentObj = root.Qo().GetOrNull(parentPath);
-            //没有key是被允许的，因为其他语言是对主语言的补丁
-            if (parentObj != null && parentObj.ContainsKey(key)) return Message.E($"key already exists: {lang}:{string.Join('.', parentPath.Append(key))}");
+            parentPath ??= Array.Empty<string>();
+            key = key.Trim();
+            kind = (kind ?? "").Trim().ToLowerInvariant();
+            if (kind != "object" && kind != "string") return Message.E("kind invalid (object|string)");
+
+            foreach (var lang in Config.Files.Keys)
+            {
+                if (!Cache.TryGetValue(lang, out var root) || root == null || root.JsonType != JsonType.Object) continue;
+
+                var parentObj = root.Qo().GetOrNull(parentPath);
+                //没有key是被允许的，因为其他语言是对主语言的补丁
+                if (parentObj != null && parentObj.ContainsKey(key))
+                    return Message.E($"key already exists: {lang}:{string.Join('.', parentPath.Append(key))}");
+            }
+
+            foreach (var lang in Config.Files.Keys)
+            {
+                if (!Cache.TryGetValue(lang, out var root) || root == null || root.JsonType != JsonType.Object)
+                {
+                    root = new WscJsonObject();
+                    Cache[lang] = root;
+                }
+
+                var parentObj = root.Qo().GetOrCreate(parentPath);
+
+                if (kind == "object") parentObj[key] = new WscJsonObject();
+                else parentObj[key] = "";
+                dirtyLanguages.Add(lang);
+            }
+
+            return Message.T;
         }
-
-        foreach (var lang in Config.Files.Keys)
+        catch (Exception ex)
         {
-            var parentObj = Cache[lang].Qo().GetOrCreate(parentPath);
-            parentObj[key] = kind == "object" ? new JsonObject() : "";
-            dirtyLanguages.Add(lang);
+            return Message.E(ex.ToString());
         }
-
-        return Message.T;
     }
 
     public TwoResult<string> DeleteKey(string[] path)
@@ -249,11 +257,18 @@ public class ProjectManager
             if (parentObj == null) continue;
             if (!parentObj.ContainsKey(oldKey)) continue;
 
-            var val = parentObj[oldKey];
+            var ordered = parentObj.ToList();
+            for (int i = 0; i < ordered.Count; i++)
+            {
+                if (ordered[i].Key == oldKey)
+                {
+                    ordered[i] = new KeyValuePair<string, JsonValue>(newKey, ordered[i].Value);
+                    break;
+                }
+            }
 
-            parentObj[newKey] = val;
-
-            parentObj.Remove(oldKey);
+            parentObj.Clear();
+            foreach (var kv in ordered) parentObj.Add(kv.Key, kv.Value);
 
             dirtyLanguages.Add(lang);
         }

@@ -35,6 +35,9 @@ let dirtyLanguages = new Set();
 
 let contextMenuState = null; // { path: string[], isObject: boolean }
 
+// 记录树节点展开状态（key 为 path 的 JSON 字符串）
+let expandedNodes = new Set();
+
 function setMenuEnabled(id, enabled) {
     const el = document.getElementById(id);
     if (!el) return;
@@ -116,6 +119,81 @@ window.external.receiveMessage(message => {
         const editorContent = document.getElementById('editor-content');
         if (editorContent) editorContent.style.display = 'none';
     }
+    else if (message.startsWith("ADD_KEY_OK:")) {
+        const payload = JSON.parse(message.substring("ADD_KEY_OK:".length));
+        const parentPath = payload.parentPath || [];
+        const key = (payload.key || "").trim();
+        const kind = (payload.kind || "").trim().toLowerCase();
+        if (!key) return;
+        if (kind !== 'object' && kind !== 'string') return;
+
+        for (const lang of languages) {
+            if (!allData[lang]) allData[lang] = {};
+            const parent = ensureObjectByPath(allData[lang], parentPath);
+            if (parent && typeof parent === 'object' && !(key in parent)) {
+                insertKeyAtEndPreserveOrder(parent, key, (kind === 'object') ? {} : "");
+            }
+        }
+
+        buildMergedTree();
+        renderTree();
+    }
+    else if (message.startsWith("DELETE_KEY_OK:")) {
+        const payload = JSON.parse(message.substring("DELETE_KEY_OK:".length));
+        const path = payload.path || [];
+        if (!path.length) return;
+
+        for (const lang of languages) {
+            if (!allData[lang]) continue;
+            deleteKeyInObject(allData[lang], path);
+        }
+
+        // 如果删的是当前正在编辑的节点或其祖先，关闭编辑器（与前端预处理一致，防止边界情况）
+        const isPrefix = (full, prefix) => {
+            if (!full || !prefix) return false;
+            if (prefix.length > full.length) return false;
+            for (let i = 0; i < prefix.length; i++) if (full[i] !== prefix[i]) return false;
+            return true;
+        };
+        if (currentEditingPath && isPrefix(currentEditingPath, path)) {
+            currentEditingPath = [];
+            const empty = document.getElementById('empty-state');
+            if (empty) {
+                empty.style.display = 'flex';
+                empty.textContent = '请选择一个节点开始编辑';
+            }
+            const editorContent = document.getElementById('editor-content');
+            if (editorContent) editorContent.style.display = 'none';
+        }
+
+        buildMergedTree();
+        renderTree();
+    }
+    else if (message.startsWith("RENAME_KEY_OK:")) {
+        const payload = JSON.parse(message.substring("RENAME_KEY_OK:".length));
+        const oldPath = payload.oldPath || [];
+        const newPath = payload.newPath || [];
+        if (!oldPath.length || !newPath.length) return;
+
+        // 更新本地数据（所有语言）并保持 key 的顺序不变
+        for (const lang of languages) {
+            if (!allData[lang]) continue;
+            renameKeyInObjectPreserveOrder(allData[lang], oldPath, newPath[newPath.length - 1]);
+        }
+
+        // 更新 mergedTree（树结构以主语言为准）
+        buildMergedTree();
+        renderTree();
+
+        // 如果当前正在编辑该节点，校正路径与 UI
+        if (currentEditingPath && currentEditingPath.join('\0') === oldPath.join('\0')) {
+            currentEditingPath = newPath;
+            const title = document.getElementById('key-title');
+            if (title) title.textContent = newPath[newPath.length - 1];
+            const pathInfo = document.getElementById('pathInfo');
+            if (pathInfo) pathInfo.textContent = "路径: " + currentEditingPath.join(" > ");
+        }
+    }
     else if (message.startsWith("LANG_FILE:")) {
         const path = message.substring("LANG_FILE:".length);
         const input = document.getElementById('new-lang-path');
@@ -137,6 +215,48 @@ window.external.receiveMessage(message => {
         }
     }
 });
+
+function deleteKeyInObject(rootObj, path) {
+    const info = getParentAndKey(path);
+    if (!info) return false;
+    const parent = getObjectByPath(rootObj, info.parentPath);
+    if (!parent || typeof parent !== 'object') return false;
+    const key = info.key;
+    if (!(key in parent)) return false;
+    delete parent[key];
+    return true;
+}
+
+function insertKeyAtEndPreserveOrder(obj, key, value) {
+    const keys = Object.keys(obj);
+    const next = {};
+    for (const k of keys) next[k] = obj[k];
+    next[key] = value;
+    for (const k of keys) delete obj[k];
+    for (const k of Object.keys(next)) obj[k] = next[k];
+}
+
+function renameKeyInObjectPreserveOrder(rootObj, oldPath, newKey) {
+    const info = getParentAndKey(oldPath);
+    if (!info) return false;
+    const parent = getObjectByPath(rootObj, info.parentPath);
+    if (!parent || typeof parent !== 'object') return false;
+    const oldKey = info.key;
+    if (!(oldKey in parent)) return false;
+    if (newKey in parent) return false;
+
+    const keys = Object.keys(parent);
+    const newParent = {};
+    for (const k of keys) {
+        if (k === oldKey) newParent[newKey] = parent[oldKey];
+        else newParent[k] = parent[k];
+    }
+
+    // 原地更新：先删除，再按顺序重建
+    for (const k of keys) delete parent[k];
+    for (const k of Object.keys(newParent)) parent[k] = newParent[k];
+    return true;
+}
 
 function buildMergedTree() {
     // 根据“主语言”的 hjson 对象结构展示树
@@ -160,7 +280,13 @@ function mergeNode(target, source) {
 function buildTreeDOM(obj, keyName, path) {
     if (obj !== null) { 
         const details = document.createElement('details');
-        details.open = true;
+        const pathKey = JSON.stringify(path);
+        details.dataset.path = pathKey;
+        details.open = expandedNodes.has(pathKey); // 默认收起；用户手动展开后记忆
+        details.addEventListener('toggle', () => {
+            if (details.open) expandedNodes.add(pathKey);
+            else expandedNodes.delete(pathKey);
+        });
         const summary = document.createElement('summary');
         summary.textContent = keyName;
         summary.dataset.path = JSON.stringify(path);
@@ -188,6 +314,16 @@ function renderTree() {
     for (const key in mergedTree) {
         container.appendChild(buildTreeDOM(mergedTree[key], key, [key]));
     }
+}
+
+function collapseAll() {
+    expandedNodes = new Set();
+    renderTree();
+}
+
+function addRootKey(kind) {
+    if (!projectLoaded) return;
+    addChildKey([], kind);
 }
 
 function openEditor(key, path) {
@@ -274,8 +410,10 @@ function showRootContextMenu(x, y) {
         menu.appendChild(sep);
     };
 
-    addItem('添加 Object', () => addChildKey([], 'object'));
-    addItem('添加 string', () => addChildKey([], 'string'));
+    addItem('根目录添加 Object', () => addChildKey([], 'object'));
+    addItem('根目录添加 string', () => addChildKey([], 'string'));
+    addSep();
+    addItem('全部收起', () => collapseAll());
 
     // 定位与防止出屏
     menu.style.display = 'block';
@@ -321,8 +459,8 @@ function showTreeContextMenu(x, y, path, isObject) {
 
     if (isObject) {
         addSep();
-        addItem('添加子 Object', () => addChildKey(path, 'object'));
-        addItem('添加子 string', () => addChildKey(path, 'string'));
+        addItem('添加子对象', () => addChildKey(path, 'object'));
+        addItem('添加翻译项', () => addChildKey(path, 'string'));
     }
 
     addSep();
@@ -438,6 +576,9 @@ function addChildKey(parentPath, kind) {
     const payload = { parentPath: parentPath, key: trimmed, kind: kind };
     window.external.sendMessage("ADD_KEY:" + JSON.stringify(payload));
 }
+
+// 根目录添加：希望新 key 插入到末尾（保持 UI 预期），所以直接走后端创建并在成功回执里再同步本地，
+// 这里不做任何本地预插入，避免顺序被“重建树”时扰动。
 
 function renderLangSelectors() {
     const container = document.getElementById('lang-container');
