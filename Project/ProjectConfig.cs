@@ -1,10 +1,11 @@
 namespace LocalizationEditor;
 
+/// <summary>
+/// 项目的序列化结构
+/// </summary>
 public class ProjectConfig
 {
     public string ProjectName { get; set; } = "Unnamed project";
-
-    public string FileType { get; set; } = "hjson";
 
     public string SourceLanguage { get; set; } = "";
 

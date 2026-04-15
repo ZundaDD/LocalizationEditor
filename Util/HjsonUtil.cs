@@ -27,4 +27,19 @@ public static class HjsonUtil
         }
         return current;
     }
+
+    public static JsonValue SaveTo(string json, string path)
+    {
+        var parseOptions = new HjsonOptions { KeepWsc = true };
+        var hjsonVal = HjsonValue.Parse(json, parseOptions);
+
+        var writeOptions = new HjsonOptions { EmitRootBraces = false, };
+
+        var str = hjsonVal.ToString(writeOptions);
+
+        File.WriteAllText(path, str);
+        return hjsonVal;
+    }
+
+    public static JsonValue LoadFrom(string path) => HjsonValue.Load(path);
 }

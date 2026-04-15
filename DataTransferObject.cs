@@ -4,6 +4,13 @@ public record class OneResult<T>(bool success, T value);
 
 public record class TwoResult<T>(bool success, T value1, T value2);
 
+public enum MessageState
+{
+    Success,
+    Fail,
+    Error
+}
+
 public static class Message
 {
     public static TwoResult<string> T => new(true, "", "");

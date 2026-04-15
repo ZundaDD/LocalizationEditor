@@ -14,7 +14,6 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        # 定义需要打包的操作系统和对应的 .NET RID
         include:
           - os: windows-latest
             rid: win-x64
